@@ -1,2 +1,0 @@
-hacktoberfest hackday
-initial commit
