@@ -3,7 +3,7 @@
 import base64
 import json
 import re
-from ollama import chat, ChatResponse
+from ollama import chat, ChatResponse, AsyncClient
 from models import AnalysisResult, Observation, Severity, RiskLevel
 
 
@@ -161,7 +161,8 @@ async def analyze_single_image(image_bytes: bytes) -> AnalysisResult:
     """Analyze a single flock image using Gemma 4 12B via Ollama."""
     b64 = _image_to_base64(image_bytes)
 
-    response: ChatResponse = chat(
+    client = AsyncClient()
+    response = await client.chat(
         model="gemma4:12b",
         messages=[
             {
@@ -183,7 +184,8 @@ async def compare_images(
     prev_b64 = _image_to_base64(previous_bytes)
     curr_b64 = _image_to_base64(current_bytes)
 
-    response: ChatResponse = chat(
+    client = AsyncClient()
+    response = await client.chat(
         model="gemma4:12b",
         messages=[
             {

@@ -10,6 +10,7 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        timeout: 300000, // 5 min — Gemma 4 12B local inference can take 1-2 min
       },
     },
   },
