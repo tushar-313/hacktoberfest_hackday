@@ -154,8 +154,8 @@ ollama run gemma4:12b
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/flockguard.git
-cd flockguard/backend
+git clone https://github.com/tushar-313/hacktoberfest_hackday.git
+cd hacktoberfest_hackday/backend
 
 # Install dependencies
 pip install -r requirements.txt
