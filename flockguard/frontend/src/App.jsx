@@ -794,6 +794,25 @@ export default function App() {
                     Local vision inference typically takes <strong className="text-slate-200">25–45 seconds</strong>. No cloud servers are contacted.
                   </p>
 
+                  {/* Visual Progress Bar with Live ETA */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex justify-between text-[11px] font-mono">
+                      <span className="text-emerald-400 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        Neural network computing on local GPU...
+                      </span>
+                      <span className="text-slate-400 font-semibold">
+                        {Math.min(95, Math.max(10, Math.floor((elapsedSeconds / 40) * 100)))}% • ~{Math.max(5, 40 - elapsedSeconds)}s est. remaining
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden border border-slate-700/60 shadow-inner">
+                      <div 
+                        className="bg-gradient-to-r from-emerald-600 via-emerald-400 to-teal-300 h-full rounded-full transition-all duration-500 ease-out shadow-lg shadow-emerald-500/30"
+                        style={{ width: `${Math.min(95, Math.max(10, Math.floor((elapsedSeconds / 40) * 100)))}%` }}
+                      />
+                    </div>
+                  </div>
+
                   {/* Progress Steps */}
                   <div className="space-y-2.5">
                     <div className="flex items-center space-x-3 text-xs">
