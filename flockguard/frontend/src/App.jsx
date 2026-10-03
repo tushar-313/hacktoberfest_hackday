@@ -680,20 +680,34 @@ export default function App() {
                   <Sliders className="w-4 h-4 text-emerald-600" />
                   <span className="font-semibold text-slate-700">Hackathon Pitch Quick-Demos:</span>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => loadDemo('anomaly')}
-                    className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold rounded-lg border border-amber-300 transition-colors flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold rounded-lg border border-amber-300 transition-colors flex items-center gap-1.5"
                   >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
-                    Load High-Risk Anomaly Case
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Case 1: Lethargy & Huddling</span>
+                  </button>
+                  <button
+                    onClick={() => loadDemo('heat_stress')}
+                    className="px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-900 font-semibold rounded-lg border border-orange-300 transition-colors flex items-center gap-1.5"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Case 2: Barn Heat Stress</span>
+                  </button>
+                  <button
+                    onClick={() => loadDemo('isolation')}
+                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-900 font-semibold rounded-lg border border-red-300 transition-colors flex items-center gap-1.5"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                    <span>Case 3: Sick Isolated Hen</span>
                   </button>
                   <button
                     onClick={() => loadDemo('healthy')}
-                    className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg border border-emerald-300 transition-colors flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-semibold rounded-lg border border-emerald-300 transition-colors flex items-center gap-1.5"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-                    Load Healthy Baseline Case
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Case 4: Healthy Foraging</span>
                   </button>
                 </div>
               </div>
@@ -779,6 +793,63 @@ export default function App() {
                       onChange={handleCurrFileUpload}
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Preset Test Image Library */}
+              <div className="bg-slate-50/90 rounded-2xl p-4 border border-slate-200 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <div className="flex items-center space-x-2">
+                    <Layers className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      Preset Test Imagery Library (6 Realistic Datasets)
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">Click to instantly populate either image slot</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+                  {SAMPLE_IMAGES.map((sample, idx) => (
+                    <div 
+                      key={idx} 
+                      className="group relative bg-white rounded-xl border border-slate-200 p-2 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="relative aspect-4/3 rounded-lg overflow-hidden bg-slate-100 mb-2">
+                          <img src={sample.url} alt={sample.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          <span className={`absolute top-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs ${
+                            sample.risk === 'CRITICAL' ? 'bg-red-600 text-white' :
+                            sample.risk === 'HIGH' ? 'bg-amber-600 text-white' :
+                            'bg-emerald-600 text-white'
+                          }`}>
+                            {sample.tag}
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-semibold text-slate-800 line-clamp-2 leading-tight" title={sample.name}>
+                          {sample.name}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-100">
+                        {comparisonMode && (
+                          <button
+                            onClick={() => pickSample(sample.url, 'prev')}
+                            className="flex-1 py-1 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors text-center"
+                            title="Set as Reference Baseline"
+                          >
+                            Baseline
+                          </button>
+                        )}
+                        <button
+                          onClick={() => pickSample(sample.url, 'curr')}
+                          className="flex-1 py-1 text-[10px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded transition-colors text-center"
+                          title="Set as Current Observation"
+                        >
+                          Target
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
