@@ -64,9 +64,21 @@ Respond in STRICT JSON format (no markdown, no code fences):
 }"""
 
 
-def _image_to_base64(image_bytes: bytes) -> str:
-    """Convert image bytes to base64 string."""
-    return base64.b64encode(image_bytes).decode("utf-8")
+import io
+from PIL import Image
+
+
+def _optimize_and_encode_image(image_bytes: bytes, max_dim: int = 768) -> str:
+    """Resize image to max 768px and compress JPEG for dramatically faster Ollama Gemma vision encoding."""
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img = img.convert("RGB")
+        img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
+    except Exception:
+        return base64.b64encode(image_bytes).decode("utf-8")
 
 
 def _parse_gemma_response(text: str) -> dict:
@@ -159,7 +171,7 @@ def _dict_to_result(data: dict, mode: str = "single") -> AnalysisResult:
 
 async def analyze_single_image(image_bytes: bytes) -> AnalysisResult:
     """Analyze a single flock image using Gemma 4 12B via Ollama."""
-    b64 = _image_to_base64(image_bytes)
+    b64 = _optimize_and_encode_image(image_bytes)
 
     client = AsyncClient()
     response = await client.chat(
@@ -181,8 +193,8 @@ async def compare_images(
     previous_bytes: bytes, current_bytes: bytes
 ) -> AnalysisResult:
     """Compare two flock images using Gemma 4 12B via Ollama."""
-    prev_b64 = _image_to_base64(previous_bytes)
-    curr_b64 = _image_to_base64(current_bytes)
+    prev_b64 = _optimize_and_encode_image(previous_bytes)
+    curr_b64 = _optimize_and_encode_image(current_bytes)
 
     client = AsyncClient()
     response = await client.chat(

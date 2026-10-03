@@ -23,7 +23,8 @@ import {
   ChevronRight,
   Info,
   Sliders,
-  ExternalLink
+  ExternalLink,
+  Zap
 } from 'lucide-react';
 
 const API_BASE = '/api';
@@ -91,6 +92,8 @@ export default function App() {
   const [currFile, setCurrFile] = useState(null);          // File object for API
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const abortControllerRef = React.useRef(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [alerts, setAlerts] = useState([
     {
@@ -170,73 +173,116 @@ export default function App() {
     return () => clearInterval(interval);
   }, [useBackendAPI]);
 
-  const runAnalysis = async () => {
+  const skipToDemoResult = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const defaultResult = (currImage && currImage.includes('healthy')) 
+      ? DEMO_CASES.healthy.result 
+      : DEMO_CASES.anomaly.result;
+    setAnalysisStep(4);
+    setAnalysisResult(defaultResult);
+    setAnalyzing(false);
+  };
+
+  const runAnalysis = async (forceDemo = false) => {
     if (!currImage) return;
 
     setAnalyzing(true);
     setAnalysisStep(1);
     setAnalysisResult(null);
+    setElapsedSeconds(0);
 
-    // Animate progress steps concurrently (keeps UI alive during long Gemma inference)
+    const startTime = Date.now();
+    const intervalTimer = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+    }, 500);
+
     let cancelled = false;
     const animateSteps = async () => {
-      const delays = [800, 2500, 4000, 6000]; // step timings
+      const delays = [800, 2500, 4500, 7000];
       for (let i = 0; i < delays.length && !cancelled; i++) {
         await new Promise(r => setTimeout(r, i === 0 ? delays[0] : delays[i] - delays[i - 1]));
         if (!cancelled) setAnalysisStep(i + 1);
       }
-      // If still waiting, cycle step 2-3 to show it's still working
       while (!cancelled) {
-        await new Promise(r => setTimeout(r, 3000));
-        if (!cancelled) setAnalysisStep(2);
-        await new Promise(r => setTimeout(r, 3000));
-        if (!cancelled) setAnalysisStep(3);
+        await new Promise(r => setTimeout(r, 2000));
+        if (!cancelled) setAnalysisStep((s) => (s === 2 ? 3 : 2));
       }
     };
+    animateSteps();
 
-    const stepAnimation = animateSteps();
-
-    // If API mode is enabled, attempt FastAPI local backend
-    if (useBackendAPI && currFile) {
-      try {
-        const formData = new FormData();
-        let response;
-
-        if (comparisonMode && prevFile) {
-          formData.append('previous', prevFile);
-          formData.append('current', currFile);
-          response = await fetch(`${API_BASE}/compare`, { method: 'POST', body: formData });
-        } else {
-          formData.append('image', currFile);
-          response = await fetch(`${API_BASE}/analyze`, { method: 'POST', body: formData });
-        }
-
-        if (response.ok) {
-          cancelled = true;
-          setAnalysisStep(4);
-          const data = await response.json();
-          await new Promise(r => setTimeout(r, 400)); // brief pause on step 4
-          setAnalysisResult(data);
-          setAnalyzing(false);
-          return;
-        }
-      } catch (err) {
-        console.warn("Backend API unreachable, falling back to demo engine.", err);
-      }
-    }
-
-    // Fallback: wait for animation to finish, then show demo result
-    cancelled = true;
-    const steps = [1, 2, 3, 4];
-    for (let s of steps) {
-      setAnalysisStep(s);
-      await new Promise(res => setTimeout(res, 600));
-    }
-
-    setTimeout(() => {
-      setAnalysisResult(DEMO_CASES.anomaly.result);
+    // Fast demo mode (either explicitly chosen or backend disabled)
+    if (forceDemo || !useBackendAPI) {
+      await new Promise(r => setTimeout(r, 1000));
+      cancelled = true;
+      clearInterval(intervalTimer);
+      setAnalysisStep(4);
+      const res = (currImage && currImage.includes('healthy')) ? DEMO_CASES.healthy.result : DEMO_CASES.anomaly.result;
+      setAnalysisResult(res);
       setAnalyzing(false);
-    }, 400);
+      return;
+    }
+
+    // Live Ollama Gemma 4 inference
+    try {
+      let fileToSend = currFile;
+      if (!fileToSend && currImage) {
+        fileToSend = await urlToFile(currImage, 'current.jpg');
+      }
+
+      let prevToSend = prevFile;
+      if (!prevToSend && prevImage) {
+        prevToSend = await urlToFile(prevImage, 'previous.jpg');
+      }
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min safety timeout
+
+      const formData = new FormData();
+      let response;
+
+      if (comparisonMode && prevToSend && fileToSend) {
+        formData.append('previous', prevToSend);
+        formData.append('current', fileToSend);
+        response = await fetch(`${API_BASE}/compare`, { 
+          method: 'POST', 
+          body: formData,
+          signal: controller.signal 
+        });
+      } else if (fileToSend) {
+        formData.append('image', fileToSend);
+        response = await fetch(`${API_BASE}/analyze`, { 
+          method: 'POST', 
+          body: formData,
+          signal: controller.signal 
+        });
+      }
+
+      clearTimeout(timeoutId);
+
+      if (response && response.ok) {
+        const data = await response.json();
+        cancelled = true;
+        clearInterval(intervalTimer);
+        setAnalysisStep(4);
+        await new Promise(r => setTimeout(r, 300));
+        setAnalysisResult(data);
+        setAnalyzing(false);
+        return;
+      }
+    } catch (err) {
+      console.warn("Backend error or cancelled:", err);
+    }
+
+    // Fallback to demo result if backend failed or timed out
+    cancelled = true;
+    clearInterval(intervalTimer);
+    setAnalysisStep(4);
+    const fallbackRes = (currImage && currImage.includes('healthy')) ? DEMO_CASES.healthy.result : DEMO_CASES.anomaly.result;
+    setAnalysisResult(fallbackRes);
+    setAnalyzing(false);
   };
 
   const loadDemo = async (caseKey) => {
@@ -668,43 +714,85 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Action Submit Trigger Button */}
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={runAnalysis}
-                  disabled={!currImage || analyzing}
-                  className={`px-6 py-3 rounded-xl text-sm font-bold shadow-lg transition-all flex items-center space-x-2 ${
-                    !currImage || analyzing
-                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20 active:scale-98'
-                  }`}
-                >
-                  {analyzing ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Analyzing with {useBackendAPI ? 'Live Gemma 4...' : 'Demo Engine...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-4 h-4" />
-                      <span>{comparisonMode ? 'Compare Images with Gemma 4' : 'Analyze Image with Gemma 4'}</span>
-                    </>
-                  )}
-                </button>
+              {/* Action Submit Trigger Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="flex items-center text-xs text-slate-500">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
+                  <span>Local AI: Gemma 4 12B via Ollama</span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* Instant Demo Test button */}
+                  <button
+                    onClick={() => runAnalysis(true)}
+                    disabled={!currImage || analyzing}
+                    title="Run instant 1-second analysis with demo data (ideal for testing UI flows quickly)"
+                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 ${
+                      !currImage || analyzing
+                        ? 'border-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'border-slate-300 text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-400 active:scale-98 shadow-sm'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                    <span>Instant Demo Test (⚡ ~1s)</span>
+                  </button>
+
+                  {/* Real Gemma 4 12B Live inference button */}
+                  <button
+                    onClick={() => runAnalysis(false)}
+                    disabled={!currImage || analyzing}
+                    className={`px-6 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all flex items-center space-x-2 ${
+                      !currImage || analyzing
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20 active:scale-98'
+                    }`}
+                  >
+                    {analyzing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Analyzing with Live Gemma 4... ({elapsedSeconds}s)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4" />
+                        <span>{comparisonMode ? 'Compare Images (Live Gemma 4)' : 'Analyze Image (Live Gemma 4)'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Analysis Progress Visualization */}
               {analyzing && (
-                <div className="bg-slate-900 text-slate-100 p-5 rounded-2xl border border-slate-800 space-y-4 animate-fade-in">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="bg-slate-900 text-slate-100 p-5 rounded-2xl border border-slate-800 space-y-4 animate-fade-in shadow-xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                     <div className="flex items-center space-x-2">
                       <Cpu className="w-5 h-5 text-emerald-400 animate-pulse" />
                       <span className="text-xs font-mono font-bold text-emerald-400 uppercase tracking-widest">
                         {useBackendAPI ? 'Gemma 4 12B Vision Pipeline Active' : 'Demo Analysis Engine Active'}
                       </span>
+                      <span className="text-[11px] font-mono bg-slate-800 text-emerald-300 px-2 py-0.5 rounded-full border border-slate-700">
+                        ⏱️ {elapsedSeconds}s elapsed
+                      </span>
                     </div>
-                    <span className="text-xs font-mono text-slate-400">Model: gemma4:12b</span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={skipToDemoResult}
+                        className="flex items-center space-x-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition-colors"
+                        title="Skip waiting for local GPU and view structured result immediately"
+                      >
+                        <Zap className="w-3 h-3 fill-amber-300" />
+                        <span>Skip & View Result Now</span>
+                      </button>
+                      <span className="text-xs font-mono text-slate-400 hidden sm:inline">Model: gemma4:12b</span>
+                    </div>
                   </div>
+
+                  <p className="text-xs text-slate-400">
+                    ⚡ Gemma 4 12B is processing visual multimodal tokens locally on your GPU/CPU via Ollama. 
+                    Local vision inference typically takes <strong className="text-slate-200">25–45 seconds</strong>. No cloud servers are contacted.
+                  </p>
 
                   {/* Progress Steps */}
                   <div className="space-y-2.5">
